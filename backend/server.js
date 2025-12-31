@@ -3,18 +3,23 @@ const session = require("express-session");
 const cors = require("cors");
 const path = require("path");
 
-/* ---------- APP INIT ---------- */
+/* =========================
+   APP INIT (FIRST)
+========================= */
 const app = express();
-app.use("/api/admin", adminRoutes);
 
-/* ---------- ROUTES ---------- */
+/* =========================
+   IMPORT ROUTES (AFTER app)
+========================= */
 const authRoutes = require("./routes/authRoutes");
 const expenseRoutes = require("./routes/expenseRoutes");
 const budgetRoutes = require("./routes/budgetRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 
-/* ---------- MIDDLEWARE ---------- */
+/* =========================
+   MIDDLEWARE
+========================= */
 
 // CORS (safe for local + deployment)
 app.use(cors({
@@ -33,23 +38,29 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    secure: false,        // true only for HTTPS
+    secure: false,   // true only for HTTPS
     httpOnly: true,
     sameSite: "lax"
   }
 }));
 
-/* ---------- SERVE FRONTEND ---------- */
+/* =========================
+   SERVE FRONTEND
+========================= */
 app.use(express.static(path.join(__dirname, "../frontend")));
 
-/* ---------- API ROUTES ---------- */
+/* =========================
+   API ROUTES
+========================= */
 app.use("/api/auth", authRoutes);
 app.use("/api/expenses", expenseRoutes);
 app.use("/api/budgets", budgetRoutes);
 app.use("/api/feedback", feedbackRoutes);
 app.use("/api/admin", adminRoutes);
 
-/* ---------- AUTH CHECK ---------- */
+/* =========================
+   AUTH CHECK (USER)
+========================= */
 app.get("/api/check-auth", (req, res) => {
   if (req.session.userId) {
     res.json({ loggedIn: true });
@@ -58,12 +69,16 @@ app.get("/api/check-auth", (req, res) => {
   }
 });
 
-/* ---------- DEFAULT ROUTE ---------- */
+/* =========================
+   DEFAULT ROUTE
+========================= */
 app.get("/", (req, res) => {
   res.sendFile(path.join(__dirname, "../frontend/index.html"));
 });
 
-/* ---------- SERVER START ---------- */
+/* =========================
+   START SERVER
+========================= */
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Backend running at http://localhost:${PORT}`);
