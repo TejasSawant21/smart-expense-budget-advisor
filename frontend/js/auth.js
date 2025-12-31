@@ -1,38 +1,72 @@
-const API = "http://localhost:5000/api/auth";
+/* ---------- REGISTER ---------- */
+function register() {
+  const name = document.getElementById("name").value;
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
 
-function login() {
-  fetch(`${API}/login`, {
+  if (!name || !email || !password) {
+    alert("All fields are required");
+    return;
+  }
+
+  fetch("http://localhost:5000/api/auth/register", {
     method: "POST",
-    credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      email: document.getElementById("email").value,
-      password: document.getElementById("password").value
-    })
+    body: JSON.stringify({ name, email, password })
   })
-  .then(res => res.json())
-  .then(data => {
-    if (data.user) {
-      window.location.href = "dashboard.html";
-    } else {
+    .then(res => res.json())
+    .then(data => {
       alert(data.message);
-    }
+      location.href = "index.html";
+    });
+}
+
+/* ---------- LOGIN ---------- */
+function login() {
+  const email = document.getElementById("email").value;
+  const password = document.getElementById("password").value;
+
+  if (!email || !password) {
+    alert("Email and password required");
+    return;
+  }
+
+  fetch("http://localhost:5000/api/auth/login", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ email, password })
+  })
+    .then(res => res.json())
+    .then(data => {
+      if (data.user) {
+        location.href = "dashboard.html";
+      } else {
+        alert("Invalid login");
+      }
+    })
+    .catch(() => alert("Server error"));
+}
+
+/* ---------- LOGOUT ---------- */
+function logout() {
+  fetch("http://localhost:5000/api/auth/logout", {
+    method: "POST",
+    credentials: "include"
+  }).then(() => {
+    location.href = "index.html";
   });
 }
 
-function register() {
-  fetch(`${API}/register`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      name: document.getElementById("name").value,
-      email: document.getElementById("email").value,
-      password: document.getElementById("password").value
-    })
+/* ---------- AUTH CHECK (AUTO PROTECT PAGES) ---------- */
+function checkAuth() {
+  fetch("http://localhost:5000/api/auth/check", {
+    credentials: "include"
   })
-  .then(res => res.json())
-  .then(data => {
-    alert(data.message);
-    window.location.href = "index.html";
-  });
+    .then(res => res.json())
+    .then(data => {
+      if (!data.loggedIn) {
+        location.href = "index.html";
+      }
+    });
 }

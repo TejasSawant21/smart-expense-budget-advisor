@@ -150,10 +150,20 @@ small,.text-muted{
   <small id="goalText"></small>
 </div>
 
+<div class="card mb-4">
+  <h6>🔮 Savings Prediction</h6>
+  <p id="predictionText" class="text-muted mb-0"></p>
+</div>
+
 <!-- ALERTS -->
 <div class="card mb-4">
   <h6>⚠️ Budget Alerts</h6>
   <div id="alerts" class="text-muted"></div>
+</div>
+
+<div class="card mb-4">
+  <h6>📧 Email Alert (Simulation)</h6>
+  <p id="emailAlert" class="text-muted mb-0"></p>
 </div>
 
 <!-- ADD TX -->
@@ -183,6 +193,11 @@ small,.text-muted{
     <li id="incomeStatus" class="list-group-item"></li>
     <li id="txCount" class="list-group-item"></li>
   </ul>
+</div>
+
+<div class="card mb-4">
+  <h6>🤖 Smart Suggestions</h6>
+  <ul id="suggestions" class="list-group list-group-flush"></ul>
 </div>
 
 <!-- EMI CALCULATOR -->
@@ -215,21 +230,148 @@ small,.text-muted{
   </div>
 </div>
 
+<div class="card mb-4">
+  <div class="d-flex justify-content-between align-items-center">
+    <h6>📅 Select Month</h6>
+    <select id="monthSelect" class="form-select w-25" onchange="changeMonth()">
+      <option value="current">Current Month</option>
+      <option value="prev">Previous Month</option>
+    </select>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-4">
+      <label class="small">From</label>
+      <input type="date" id="fromDate" class="form-control">
+    </div>
+    <div class="col-md-4">
+      <label class="small">To</label>
+      <input type="date" id="toDate" class="form-control">
+    </div>
+    <div class="col-md-4">
+      <button class="btn btn-primary w-100" onclick="applyDateFilter()">
+        Apply Date Filter
+      </button>
+    </div>
+  </div>
+</div>
+
+<!-- CHARTS ROW -->
+<div class="row mb-4">
+
+  <!-- LINE CHART -->
+  <div class="col-md-6">
+    <div class="card h-100">
+      <h6>📈 Monthly Expense Trend</h6>
+      <div style="height:260px">
+  <canvas id="trendChart"></canvas>
+</div>
+
+    </div>
+  </div>
+
+  <!-- DONUT CHART -->
+  <div class="col-md-6">
+    <div class="card h-100">
+      <h6>📊 Expense Distribution</h6>
+      <div style="max-width:320px;margin:auto">
+  <canvas id="pieChart"></canvas>
+</div>
+
+    </div>
+  </div>
+
+</div>
+
+<div class="card mb-4">
+  <div class="d-flex justify-content-between align-items-center">
+    <h6 class="mb-0">📤 Export Reports</h6>
+    <button class="btn btn-sm btn-outline-info px-3" onclick="downloadCharts()">
+  <i class="bi bi-image"></i> Download Charts
+</button>
+
+
+    <div class="d-flex gap-2">
+      <button class="btn btn-sm btn-outline-success px-3" onclick="exportCSV()">
+        <i class="bi bi-file-earmark-excel"></i> CSV
+      </button>
+
+      <button class="btn btn-sm btn-outline-danger px-3" onclick="exportPDF()">
+        <i class="bi bi-file-earmark-pdf"></i> PDF
+      </button>
+    </div>
+  </div>
+</div>
 
 <!-- RECENT -->
 <div class="card mb-4">
   <div class="d-flex justify-content-between align-items-center">
     <h6>Recent Transactions</h6>
-    <select id="filter" onchange="filterTx()" class="form-select w-25">
+    <select id="filter" onchange="applyFilters()" class="form-select w-25">
       <option value="all">All</option>
       <option value="today">Today</option>
       <option value="month">This Month</option>
     </select>
   </div>
+
+  <input
+  id="searchInput"
+  class="form-control mb-2"
+  placeholder="Search by title"
+  oninput="applyFilters()"
+/>
+
   <ul id="recent" class="list-group list-group-flush mt-2"></ul>
 </div>
 
 </div>
+<!-- EDIT TRANSACTION MODAL -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content bg-dark text-light">
+      <div class="modal-header">
+        <h5 class="modal-title">Edit Transaction</h5>
+        <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+
+        <input type="hidden" id="editId">
+
+        <div class="mb-2">
+          <label>Title</label>
+          <input id="editTitle" class="form-control">
+        </div>
+
+        <div class="mb-2">
+          <label>Amount</label>
+          <input id="editAmount" type="number" class="form-control">
+        </div>
+
+        <div class="mb-2">
+          <label>Type</label>
+          <select id="editType" class="form-select">
+            <option value="income">Income</option>
+            <option value="expense">Expense</option>
+          </select>
+        </div>
+
+        <div class="mb-2">
+          <label>Category</label>
+          <input id="editCategory" class="form-control">
+        </div>
+
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" onclick="saveEdit()">Save</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
 
 <script src="js/dashboard.js"></script>
 </body>

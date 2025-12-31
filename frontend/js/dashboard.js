@@ -1,228 +1,665 @@
+console.log("dashboard.js loaded");
+let pieChartInstance = null;
+let trendChartInstance = null;
+
+
 const API = "http://localhost:5000/api";
 let allTx = [];
+let editModal;
 
-let selectedMonth = new Date().getMonth();
-let selectedYear  = new Date().getFullYear();
+/* ================= DOM ================= */
+const incomeEl = income;
+const expenseEl = expense;
+const balanceEl = balance;
+const savingsEl = savings;
+const scoreEl = score;
 
-function monthName(m,y){
-  return new Date(y,m).toLocaleString('default',{month:'long',year:'numeric'});
+const recentEl = recent;
+const expenseCategoryTableEl = expenseCategoryTable;
+const monthSummaryEl = monthSummary;
+const balanceWarningEl = balanceWarning;
+const topCategoryEl = topCategory;
+const incomeStatusEl = incomeStatus;
+const txCountEl = txCount;
+
+const goalBarEl = goalBar;
+const goalTextEl = goalText;
+
+/* ================= AUTH ================= */
+fetch(`${API}/auth/check`, { credentials: "include" })
+  .then(r => r.json())
+  .then(d => {
+    if (!d.loggedIn) location.href = "index.html";
+    editModal = new bootstrap.Modal(document.getElementById("editModal"));
+    loadDashboard();
+  });
+
+/* ================= ADD ================= */
+function addTx() {
+  const titleVal = title.value.trim();
+  const amtVal = Number(amount.value);
+  const typeVal = type.value;
+  const catVal = category.value || "General";
+
+  if (!titleVal || !amtVal) return alert("Enter title & amount");
+
+  let finalAmt = typeVal === "expense" ? -amtVal : amtVal;
+
+  fetch(`${API}/expenses`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({
+      title: titleVal,
+      amount: finalAmt,
+      category: catVal
+    })
+  }).then(() => {
+    title.value = "";
+    amount.value = "";
+    category.value = "";
+    loadDashboard();
+  });
 }
 
-function loadDashboard(){
-  applyTheme();
-  fetch(`${API}/expenses`,{credentials:"include"})
-    .then(r=>r.status===401?location.href="index.html":r.json())
-    .then(data=>{
-      allTx=data;
-      overview();
-      scoreCalc();
-      updateMonthlyComparison();
+/* ================= LOAD ================= */
+function loadDashboard() {
+  fetch(`${API}/expenses`, { credentials: "include" })
+    .then(r => r.json())
+    .then(data => {
+     const now = new Date();
+allTx = (data || []).filter(t => {
+  const d = new Date(t.created_at || Date.now());
+  if (selectedMonth === "current") {
+    return d.getMonth() === now.getMonth();
+  } else {
+    return d.getMonth() === now.getMonth() - 1;
+  }
+});
+
+      updateKPIs();
       updateSavingsGoal();
-      budgetAlerts();
-      filterTx();
       monthlySummary();
       smartInsights();
-      fillExpenseCategory();
+      expenseByCategory();
+      recentTx();
+      budgetAlerts();
+      applyFilters();
+      renderCategoryChart();
+      drawMonthlyTrend();
+      renderExpensePieChart();
+      renderMonthlyTrendChart();
+      smartSuggestions();
+      savingsPrediction();
+      emailAlertSimulation();
+
+
+
+
+
     });
 }
 
-/* KPI */
-function overview(){
-  let inc=sum("income"), exp=sum("expense");
-  income.innerText="₹"+inc;
-  expense.innerText="₹"+exp;
-  balance.innerText="₹"+(inc-exp);
-  savings.innerText=inc?Math.round(((inc-exp)/inc)*100)+"%":"0%";
+/* ================= KPI ================= */
+function updateKPIs() {
+  let inc = 0, exp = 0;
+
+  allTx.forEach(t => {
+    const a = Number(t.amount);
+    if (a > 0) inc += a;
+    else exp += Math.abs(a);
+  });
+
+  incomeEl.innerText = `₹${inc.toFixed(2)}`;
+  expenseEl.innerText = `₹${exp.toFixed(2)}`;
+  balanceEl.innerText = `₹${(inc - exp).toFixed(2)}`;
+  savingsEl.innerText = inc ? Math.round(((inc - exp) / inc) * 100) + "%" : "0%";
+  scoreEl.innerText = inc ? Math.min(100, Math.round(((inc - exp) / inc) * 100)) + " / 100" : "—";
 }
 
-/* SCORE */
-function scoreCalc(){
-  let inc=sum("income"), exp=sum("expense");
-  score.innerText=inc
-    ? Math.round(Math.min(((inc-exp)/inc)*100,100))+" / 100"
-    : "0 / 100";
+/* ================= RECENT (EDIT + DELETE) ================= */
+function recentTx() {
+  recentEl.innerHTML = "";
+
+  allTx.slice().reverse().forEach(t => {
+    recentEl.innerHTML += `
+      <li class="list-group-item d-flex justify-content-between align-items-center">
+        <span>
+          ${t.amount > 0 ? "Income" : "Expense"}:
+          ${t.title} — ₹${Math.abs(Number(t.amount)).toFixed(2)}
+        </span>
+        <div>
+          <button class="btn btn-sm btn-warning me-1" onclick='openEdit(${JSON.stringify(t)})'>Edit</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteTx(${t.id})">Delete</button>
+        </div>
+      </li>`;
+  });
 }
 
-/* 🔥 IMPROVED MONTHLY COMPARISON */
-function updateMonthlyComparison(){
-  let cm=selectedMonth, cy=selectedYear;
-  let pm=cm===0?11:cm-1, py=cm===0?cy-1:cy;
-
-  let cur=monthExpense(cm,cy);
-  let prev=monthExpense(pm,py);
-
-  monthLabel.innerText =
-    `${monthName(cm,cy)}  vs  ${monthName(pm,py)}`;
-
-  if(!prev){
-    comparison.innerText="No previous month data";
-    comparisonNote.innerText="Add more transactions to see trends";
-    return;
-  }
-
-  let diff=cur-prev;
-  let pct=Math.abs(((diff)/prev)*100).toFixed(1);
-
-  if(diff>0){
-    comparison.innerText=`⬆ Expenses increased by ₹${diff}`;
-    comparisonNote.innerText=`Increase of ${pct}% compared to last month`;
-    comparison.className="fw-semibold text-danger";
-  }else{
-    comparison.innerText=`⬇ Expenses reduced by ₹${Math.abs(diff)}`;
-    comparisonNote.innerText=`Reduction of ${pct}% compared to last month`;
-    comparison.className="fw-semibold text-success";
-  }
+/* ================= OPEN EDIT ================= */
+function openEdit(t) {
+  editId.value = t.id;
+  editTitle.value = t.title;
+  editAmount.value = Math.abs(Number(t.amount));
+  editType.value = t.amount > 0 ? "income" : "expense";
+  editCategory.value = t.category || "General";
+  editModal.show();
 }
 
-function prevMonth(){
-  selectedMonth===0?(selectedMonth=11,selectedYear--):selectedMonth--;
-  updateMonthlyComparison();
-  fillExpenseCategory();
-  monthlySummary();
-  smartInsights();
-}
-function nextMonth(){
-  let n=new Date();
-  if(selectedYear===n.getFullYear()&&selectedMonth===n.getMonth())return;
-  selectedMonth===11?(selectedMonth=0,selectedYear++):selectedMonth++;
-  updateMonthlyComparison();
-  fillExpenseCategory();
-  monthlySummary();
-  smartInsights();
+/* ================= SAVE EDIT ================= */
+function saveEdit() {
+  const id = editId.value;
+  let amt = Number(editAmount.value);
+  if (editType.value === "expense") amt = -amt;
+
+  fetch(`${API}/expenses/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({
+      title: editTitle.value,
+      amount: amt,
+      category: editCategory.value
+    })
+  }).then(() => {
+    editModal.hide();
+    loadDashboard();
+  });
 }
 
-/* GOAL */
-function setGoal(){
-  localStorage.setItem("goal",goalInput.value);
+/* ================= DELETE ================= */
+function deleteTx(id) {
+  if (!confirm("Delete transaction?")) return;
+  fetch(`${API}/expenses/${id}`, {
+    method: "DELETE",
+    credentials: "include"
+  }).then(() => loadDashboard());
+}
+
+/* ================= BUDGET ALERT ================= */
+function budgetAlerts() {
+  let inc = 0, exp = 0;
+  allTx.forEach(t => {
+    const a = Number(t.amount);
+    if (a > 0) inc += a;
+    else exp += Math.abs(a);
+  });
+
+  alerts.innerText =
+    exp / inc > 0.8 ? "🔴 High spending alert!" :
+    exp / inc > 0.6 ? "🟠 Spending warning" :
+    "🟢 Spending under control";
+}
+
+/* ================= SAVINGS GOAL ================= */
+function setGoal() {
+  localStorage.setItem("goal", goalInput.value);
   updateSavingsGoal();
 }
-function updateSavingsGoal(){
-  let goal=+localStorage.getItem("goal");
-  if(!goal)return;
-  let saved=sum("income")-sum("expense");
-  goalBar.style.width=Math.min((saved/goal)*100,100)+"%";
-  goalText.innerText=`Saved ₹${saved} of ₹${goal}`;
+
+function updateSavingsGoal() {
+  const goal = Number(localStorage.getItem("goal"));
+  if (!goal) return;
+
+  let saved = 0;
+  allTx.forEach(t => saved += Number(t.amount));
+  goalBarEl.style.width = Math.min((saved / goal) * 100, 100) + "%";
+  goalTextEl.innerText = `Saved ₹${saved.toFixed(2)} of ₹${goal}`;
 }
 
-/* ALERTS */
-function budgetAlerts(){
-  alerts.innerHTML="";
-  fetch(`${API}/budgets`,{credentials:"include"})
-    .then(r=>r.json())
-    .then(b=>{
-      b.forEach(x=>{
-        let spent=allTx.filter(t=>t.category===x.category&&t.type==="expense")
-                        .reduce((s,t)=>s+ +t.amount,0);
-        if(spent>x.monthly_limit)
-          alerts.innerHTML+=`<div>⚠ ${x.category} budget exceeded</div>`;
-      });
-      if(!alerts.innerHTML)alerts.innerText="No alerts";
-    });
-}
-
-/* RECENT */
-function filterTx(){
-  let f=filter.value;
-  recent.innerHTML="";
-  let now=new Date();
-  allTx.filter(t=>{
-    let d=new Date(t.created_at);
-    if(f==="today")return d.toDateString()===now.toDateString();
-    if(f==="month")return d.getMonth()===now.getMonth();
-    return true;
-  }).slice(-5).reverse()
-    .forEach(t=>{
-      recent.innerHTML+=`<li class="list-group-item">${t.category} — ₹${t.amount}</li>`;
-    });
-}
-
-/* EMI */
-function calcEMI(){
-  let P=+loan.value,R=+rate.value/1200,N=+months.value;
-  emiResult.innerText=P&&R&&N
-    ? "Monthly EMI: ₹"+Math.round((P*R*Math.pow(1+R,N))/(Math.pow(1+R,N)-1))
-    : "Enter valid values";
-}
-
-/* SUMMARY */
-function monthlySummary(){
-  let inc=sum("income"), exp=sum("expense");
-  monthSummary.innerText=
-    `${monthName(selectedMonth,selectedYear)} | Income ₹${inc}, Expense ₹${exp}, Saving ₹${inc-exp}`;
-  balanceWarning.innerText=
-    inc && (inc-exp)<inc*0.2 ? "⚠ Your balance is getting low" : "";
-}
-
-/* 🔥 IMPROVED SMART INSIGHTS */
-function smartInsights(){
-  let inc=sum("income"), exp=sum("expense");
-
-  incomeStatus.innerText =
-    inc>=exp
-      ? "🟢 You are managing expenses well this month"
-      : "🔴 Expenses are higher than income this month";
-
-  let tx=allTx.filter(t=>{
-    let d=new Date(t.created_at);
-    return d.getMonth()===selectedMonth&&d.getFullYear()===selectedYear;
-  }).length;
-
-  txCount.innerText =
-    tx>20
-      ? "📊 High transaction activity this month"
-      : "📉 Low transaction activity this month";
-}
-
-/* EXPENSE CATEGORY TABLE */
-function fillExpenseCategory(){
-  const table=document.getElementById("expenseCategoryTable");
-  if(!table)return;
-  table.innerHTML="";
-  const list=allTx.filter(t=>{
-    let d=new Date(t.created_at);
-    return t.type==="expense"&&d.getMonth()===selectedMonth&&d.getFullYear()===selectedYear;
+/* ================= SUMMARY & INSIGHTS ================= */
+function monthlySummary() {
+  let inc = 0, exp = 0;
+  allTx.forEach(t => {
+    const a = Number(t.amount);
+    if (a > 0) inc += a;
+    else exp += Math.abs(a);
   });
-  if(!list.length){
-    table.innerHTML=`<tr><td colspan="3" class="text-muted">No expenses this month</td></tr>`;
-    return;
-  }
-  let total=list.reduce((s,t)=>s+ +t.amount,0), map={};
-  list.forEach(t=>map[t.category]=(map[t.category]||0)+ +t.amount);
-  Object.entries(map).forEach(([c,a])=>{
-    table.innerHTML+=`
+  monthSummaryEl.innerText =
+    `Income ₹${inc.toFixed(2)}, Expense ₹${exp.toFixed(2)}, Balance ₹${(inc - exp).toFixed(2)}`;
+}
+
+function smartInsights() {
+  txCountEl.innerText = `🧾 ${allTx.length} transactions`;
+}
+
+/* ================= CATEGORY ================= */
+function expenseByCategory() {
+  expenseCategoryTableEl.innerHTML = "";
+  let map = {}, total = 0;
+
+  allTx.forEach(t => {
+    if (t.amount < 0) {
+      const c = t.category || "General";
+      const v = Math.abs(Number(t.amount));
+      map[c] = (map[c] || 0) + v;
+      total += v;
+    }
+  });
+
+  Object.entries(map).forEach(([c, v]) => {
+    expenseCategoryTableEl.innerHTML += `
       <tr>
         <td>${c}</td>
-        <td>₹${a}</td>
-        <td>${((a/total)*100).toFixed(1)}%</td>
+        <td>₹${v.toFixed(2)}</td>
+        <td>${((v / total) * 100).toFixed(1)}%</td>
       </tr>`;
   });
 }
 
-/* HELPERS */
-function sum(type){
-  return allTx.filter(t=>t.type===type).reduce((s,t)=>s+ +t.amount,0);
-}
-function monthExpense(m,y){
-  return allTx.filter(t=>t.type==="expense" &&
-    new Date(t.created_at).getMonth()===m &&
-    new Date(t.created_at).getFullYear()===y
-  ).reduce((s,t)=>s+ +t.amount,0);
+function renderExpensePieChart() {
+  const ctx = document.getElementById("pieChart");
+  if (!ctx) return;
+
+  let categoryMap = {};
+  let total = 0;
+
+  allTx.forEach(t => {
+    if (Number(t.amount) < 0) {
+      const cat = t.category || "General";
+      const val = Math.abs(Number(t.amount));
+      categoryMap[cat] = (categoryMap[cat] || 0) + val;
+      total += val;
+    }
+  });
+
+  const labels = Object.keys(categoryMap);
+  const values = Object.values(categoryMap);
+
+  if (pieChartInstance) pieChartInstance.destroy();
+
+  pieChartInstance = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        backgroundColor: [
+          "#38bdf8",
+          "#22c55e",
+          "#facc15",
+          "#f97316",
+          "#a855f7"
+        ],
+        borderWidth: 2
+      }]
+    },
+    options: {
+  responsive: true,
+  animation: {
+    animateScale: true,
+    animateRotate: true,
+    duration: 1200
+  },
+  plugins: {
+    legend: {
+      position: "bottom",
+      labels: { color: "#e5e7eb" }
+    }
+  },
+  cutout: "65%"
 }
 
-/* THEME */
-function toggleTheme(){
+  });
+}
+
+function renderMonthlyTrendChart() {
+  const ctx = document.getElementById("trendChart");
+  if (!ctx) return;
+
+  let dailyExpense = Array(31).fill(0);
+
+  allTx.forEach(t => {
+    if (Number(t.amount) < 0 && t.created_at) {
+      const day = new Date(t.created_at).getDate();
+      dailyExpense[day - 1] += Math.abs(Number(t.amount));
+    }
+  });
+
+  if (trendChartInstance) trendChartInstance.destroy();
+
+  trendChartInstance = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: dailyExpense.map((_, i) => `Day ${i + 1}`),
+      datasets: [{
+        label: "Daily Expense (₹)",
+        data: dailyExpense,
+        borderColor: "#38bdf8",
+        backgroundColor: "rgba(56,189,248,0.15)",
+        fill: true,
+        tension: 0.4
+      }]
+    },
+    options: {
+      responsive: true,
+      animation: {
+  duration: 1200,
+  easing: "easeOutQuart"
+},
+
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        x: { ticks: { color: "#cbd5f5" } },
+        y: { ticks: { color: "#cbd5f5" } }
+      }
+    }
+  });
+}
+
+
+/* ================= LOGOUT ================= */
+function logout() {
+  fetch(`${API}/auth/logout`, { method: "POST", credentials: "include" })
+    .then(() => location.href = "index.html");
+}
+
+function toggleTheme() {
   document.body.classList.toggle("light");
-  localStorage.setItem("theme",document.body.classList.contains("light")?"light":"dark");
-}
-function applyTheme(){
-  if(localStorage.getItem("theme")==="light")
-    document.body.classList.add("light");
 }
 
-/* LOGOUT */
-function logout(){
-  fetch(`${API}/auth/logout`,{credentials:"include"})
-    .then(()=>location.href="index.html");
+function applyFilters() {
+  const search =
+    document.getElementById("searchInput")?.value.toLowerCase() || "";
+  const filter =
+    document.getElementById("filter")?.value || "all";
+
+  const filtered = allTx.filter(t => {
+    const titleMatch = t.title.toLowerCase().includes(search);
+    return titleMatch;
+  });
+
+  recent.innerHTML = "";
+
+  if (!filtered.length) {
+    recent.innerHTML =
+      `<li class="list-group-item text-muted">No matching transactions</li>`;
+    return;
+  }
+
+  filtered.slice().reverse().forEach(t => {
+    recent.innerHTML += `
+      <li class="list-group-item d-flex justify-content-between align-items-center">
+        <span>
+          ${Number(t.amount) > 0 ? "Income" : "Expense"}:
+          ${t.title} — ₹${Math.abs(Number(t.amount)).toFixed(2)}
+        </span>
+        <div>
+          <button class="btn btn-sm btn-warning me-1" onclick='openEdit(${JSON.stringify(t)})'>Edit</button>
+          <button class="btn btn-sm btn-danger" onclick="deleteTx(${t.id})">Delete</button>
+        </div>
+      </li>`;
+  });
 }
 
-loadDashboard();
+let categoryChart;
+
+function renderCategoryChart() {
+  const ctx = document.getElementById("categoryChart");
+  if (!ctx) return;
+
+  const categoryMap = {};
+  let total = 0;
+
+  allTx.forEach(t => {
+    if (Number(t.amount) < 0) {
+      const cat = t.category || "General";
+      const val = Math.abs(Number(t.amount));
+      categoryMap[cat] = (categoryMap[cat] || 0) + val;
+      total += val;
+    }
+  });
+
+  const labels = Object.keys(categoryMap);
+  const values = Object.values(categoryMap);
+
+  if (!labels.length) return;
+
+  if (categoryChart) categoryChart.destroy();
+
+  categoryChart = new Chart(ctx, {
+    type: "doughnut",
+    data: {
+      labels,
+      datasets: [{
+        data: values,
+        borderWidth: 2,
+        borderColor: "#020617",
+        backgroundColor: [
+          "#38bdf8",
+          "#22c55e",
+          "#facc15",
+          "#fb7185",
+          "#a78bfa",
+          "#fb923c"
+        ]
+      }]
+    },
+    options: {
+      cutout: "65%",
+      responsive: true,
+      plugins: {
+        legend: {
+          position: "bottom",
+          labels: {
+            color: "#cbd5f5",
+            padding: 15,
+            boxWidth: 14
+          }
+        },
+        tooltip: {
+          callbacks: {
+            label: ctx => {
+              const value = ctx.raw;
+              const pct = ((value / total) * 100).toFixed(1);
+              return ` ₹${value} (${pct}%)`;
+            }
+          }
+        }
+      }
+    }
+  });
+}
+
+let trendChart;
+
+/* ================= MONTHLY EXPENSE TREND ================= */
+function drawMonthlyTrend() {
+  const daily = {};
+
+  // Collect expenses day-wise
+  allTx.forEach(t => {
+    if (t.amount < 0) {
+      const d = new Date(t.created_at || Date.now()).getDate();
+      daily[d] = (daily[d] || 0) + Math.abs(Number(t.amount));
+    }
+  });
+
+  const days = Object.keys(daily).sort((a, b) => a - b);
+  const values = days.map(d => daily[d]);
+
+  const ctx = document.getElementById("trendChart");
+  if (!ctx) return;
+
+  if (trendChart) trendChart.destroy();
+
+  trendChart = new Chart(ctx, {
+    type: "line",
+    data: {
+      labels: days.map(d => `Day ${d}`),
+      datasets: [{
+        label: "Expenses (₹)",
+        data: values,
+        borderColor: "#38bdf8",
+        backgroundColor: "rgba(56,189,248,0.15)",
+        tension: 0.4,
+        fill: true,
+        pointRadius: 4,
+        pointBackgroundColor: "#38bdf8"
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { display: false }
+      },
+      scales: {
+        x: { ticks: { color: "#cbd5f5" } },
+        y: { ticks: { color: "#cbd5f5" } }
+      }
+    }
+  });
+}
+
+let selectedMonth = "current";
+
+function changeMonth() {
+  selectedMonth = document.getElementById("monthSelect").value;
+  loadDashboard();
+}
+
+function smartSuggestions() {
+  const suggestionsEl = document.getElementById("suggestions");
+  suggestionsEl.innerHTML = "";
+
+  let categoryTotals = {};
+  let totalExpense = 0;
+
+  allTx.forEach(t => {
+    if (t.amount < 0) {
+      const cat = t.category || "General";
+      const val = Math.abs(t.amount);
+      categoryTotals[cat] = (categoryTotals[cat] || 0) + val;
+      totalExpense += val;
+    }
+  });
+
+  Object.entries(categoryTotals).forEach(([cat, val]) => {
+    const percent = Math.round((val / totalExpense) * 100);
+    if (percent > 30) {
+      suggestionsEl.innerHTML += `
+        <li class="list-group-item">
+          🔔 You spend ${percent}% on <b>${cat}</b>. Consider reducing it.
+        </li>`;
+    }
+  });
+
+  if (!suggestionsEl.innerHTML) {
+    suggestionsEl.innerHTML =
+      `<li class="list-group-item">✅ Spending looks balanced</li>`;
+  }
+}
+
+function exportCSV() {
+  let csv = "Title,Amount,Category,Date\n";
+
+  allTx.forEach(t => {
+    csv += `${t.title},${t.amount},${t.category || "General"},${t.created_at || ""}\n`;
+  });
+
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `expense-report-${selectedMonth}.csv`;
+  a.click();
+}
+
+
+function exportPDF() {
+  const win = window.open("", "", "width=800,height=600");
+  win.document.write("<h2>Expense Report</h2><hr>");
+  allTx.forEach(t => {
+    win.document.write(
+      `<p>${t.title} — ₹${Math.abs(t.amount)} (${t.category || "General"})</p>`
+    );
+  });
+  win.print();
+}
+
+function applyDateFilter() {
+  const from = new Date(document.getElementById("fromDate").value);
+  const to = new Date(document.getElementById("toDate").value);
+
+  if (!from || !to) return;
+
+  allTx = allTx.filter(t => {
+    const d = new Date(t.created_at || Date.now());
+    return d >= from && d <= to;
+  });
+
+  updateKPIs();
+  updateSavingsGoal();
+  monthlySummary();
+  smartInsights();
+  expenseByCategory();
+  recentTx();
+  budgetAlerts();
+}
+
+function downloadCharts() {
+  const charts = document.querySelectorAll("canvas");
+
+  charts.forEach((canvas, index) => {
+    const link = document.createElement("a");
+    link.download = `chart-${index + 1}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  });
+}
+
+function savingsPrediction() {
+  const goal = Number(localStorage.getItem("goal"));
+  if (!goal) return;
+
+  let totalIncome = 0;
+  let totalExpense = 0;
+
+  allTx.forEach(t => {
+    const amt = Number(t.amount);
+    if (amt > 0) totalIncome += amt;
+    else totalExpense += Math.abs(amt);
+  });
+
+  const monthlySaving = totalIncome - totalExpense;
+  const remaining = goal - monthlySaving;
+
+  const predictionEl = document.getElementById("predictionText");
+
+  if (monthlySaving <= 0) {
+    predictionEl.innerText =
+      "⚠️ Savings rate is too low to predict goal achievement.";
+    return;
+  }
+
+  const months = Math.ceil(remaining / monthlySaving);
+
+  predictionEl.innerText =
+    months <= 0
+      ? "🎉 You have already achieved your savings goal!"
+      : `📅 At the current rate, you will reach your goal in ${months} month(s).`;
+}
+
+function emailAlertSimulation() {
+  let income = 0;
+  let expense = 0;
+
+  allTx.forEach(t => {
+    const amt = Number(t.amount);
+    if (amt > 0) income += amt;
+    else expense += Math.abs(amt);
+  });
+
+  const el = document.getElementById("emailAlert");
+
+  if (expense > income * 0.8) {
+    el.innerText =
+      "📨 Alert email sent: You are exceeding your budget!";
+  } else {
+    el.innerText =
+      "✅ No alert email needed.";
+  }
+}

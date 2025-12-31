@@ -46,7 +46,7 @@ body{
   transition:.3s;
 }
 
-/* 🔥 CARD GLOW */
+/* Card Glow */
 .box:hover{
   box-shadow:0 0 35px rgba(56,189,248,0.35);
 }
@@ -125,7 +125,9 @@ a{
       <input id="email" class="form-control mb-3" placeholder="Email">
       <input id="password" type="password" class="form-control mb-3" placeholder="Password">
 
-      <button onclick="register()" class="btn btn-success w-100 mb-3">Register</button>
+      <button onclick="register()" class="btn btn-success w-100 mb-3">
+        Register
+      </button>
 
       <small>
         Already registered?
@@ -137,30 +139,38 @@ a{
 </div>
 
 <script>
-function register(){
-  fetch("http://localhost:5000/api/auth/register",{
-    method:"POST",
-    headers:{"Content-Type":"application/json"},
-    credentials:"include",
-    body:JSON.stringify({
-      name:name.value,
-      email:email.value,
-      password:password.value
+function register() {
+  const nameVal = document.getElementById("name").value.trim();
+  const emailVal = document.getElementById("email").value.trim();
+  const passVal = document.getElementById("password").value.trim();
+
+  if (!nameVal || !emailVal || !passVal) {
+    alert("All fields required");
+    return;
+  }
+
+  fetch("http://localhost:5000/api/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({
+      name: nameVal,
+      email: emailVal,
+      password: passVal
     })
   })
-  .then(r=>r.json())
-  .then(d=>{
-    if(d.success){
+  .then(res => res.json())
+  .then(data => {
+    if (data.message === "Registered" || data.message === "Registered successfully") {
       alert("Registration successful");
-      location.href="index.html";
-    }else{
-      alert(d.message || "Registration failed");
+      location.href = "index.html";
+    } else {
+      alert(data.message || "Registration failed");
     }
   })
-  .catch(()=>alert("Server not reachable"));
+  .catch(() => alert("Server not reachable"));
 }
 </script>
 
 </body>
 </html>
-

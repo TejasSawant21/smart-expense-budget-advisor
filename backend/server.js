@@ -1,35 +1,70 @@
 const express = require("express");
 const session = require("express-session");
 const cors = require("cors");
+const path = require("path");
 
+/* ---------- APP INIT ---------- */
+const app = express();
+app.use("/api/admin", adminRoutes);
+
+/* ---------- ROUTES ---------- */
 const authRoutes = require("./routes/authRoutes");
 const expenseRoutes = require("./routes/expenseRoutes");
 const budgetRoutes = require("./routes/budgetRoutes");
 const feedbackRoutes = require("./routes/feedbackRoutes");
+const adminRoutes = require("./routes/adminRoutes");
 
-const app = express();
+/* ---------- MIDDLEWARE ---------- */
 
-/* ✅ FIXED CORS CONFIG */
+// CORS (safe for local + deployment)
 app.use(cors({
-  origin: ["http://localhost:5500", "http://127.0.0.1:5500"],
-  credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+  origin: true,
+  credentials: true
 }));
 
+// Body parsers
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
+// Session configuration
 app.use(session({
+  name: "smart-expense-session",
   secret: "smart_expense_secret",
   resave: false,
   saveUninitialized: false,
-  cookie: { secure: false }
+  cookie: {
+    secure: false,        // true only for HTTPS
+    httpOnly: true,
+    sameSite: "lax"
+  }
 }));
 
+/* ---------- SERVE FRONTEND ---------- */
+app.use(express.static(path.join(__dirname, "../frontend")));
+
+/* ---------- API ROUTES ---------- */
 app.use("/api/auth", authRoutes);
 app.use("/api/expenses", expenseRoutes);
 app.use("/api/budgets", budgetRoutes);
 app.use("/api/feedback", feedbackRoutes);
+app.use("/api/admin", adminRoutes);
 
-app.listen(5000, () => {
-  console.log("🚀 Backend running at http://localhost:5000");
+/* ---------- AUTH CHECK ---------- */
+app.get("/api/check-auth", (req, res) => {
+  if (req.session.userId) {
+    res.json({ loggedIn: true });
+  } else {
+    res.json({ loggedIn: false });
+  }
+});
+
+/* ---------- DEFAULT ROUTE ---------- */
+app.get("/", (req, res) => {
+  res.sendFile(path.join(__dirname, "../frontend/index.html"));
+});
+
+/* ---------- SERVER START ---------- */
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log(`🚀 Backend running at http://localhost:${PORT}`);
 });
