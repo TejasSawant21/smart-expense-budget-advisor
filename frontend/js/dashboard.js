@@ -89,12 +89,8 @@ allTx = (data || []).filter(t => {
       drawMonthlyTrend();
       renderExpensePieChart();
       renderMonthlyTrendChart();
-      smartSuggestions();
       savingsPrediction();
-      emailAlertSimulation();
-
-
-
+      smartSuggestions();
 
 
     });
@@ -520,37 +516,45 @@ function changeMonth() {
   loadDashboard();
 }
 
-function smartSuggestions() {
-  const suggestionsEl = document.getElementById("suggestions");
-  suggestionsEl.innerHTML = "";
-
-  let categoryTotals = {};
-  let totalExpense = 0;
+function smartInsights() {
+  let food = 0, total = 0;
 
   allTx.forEach(t => {
     if (t.amount < 0) {
-      const cat = t.category || "General";
-      const val = Math.abs(t.amount);
-      categoryTotals[cat] = (categoryTotals[cat] || 0) + val;
-      totalExpense += val;
+      total += Math.abs(t.amount);
+      if (t.category?.toLowerCase() === "food") {
+        food += Math.abs(t.amount);
+      }
     }
   });
 
-  Object.entries(categoryTotals).forEach(([cat, val]) => {
-    const percent = Math.round((val / totalExpense) * 100);
-    if (percent > 30) {
-      suggestionsEl.innerHTML += `
-        <li class="list-group-item">
-          🔔 You spend ${percent}% on <b>${cat}</b>. Consider reducing it.
-        </li>`;
-    }
-  });
+  let msg = "Spending looks balanced";
 
-  if (!suggestionsEl.innerHTML) {
-    suggestionsEl.innerHTML =
-      `<li class="list-group-item">✅ Spending looks balanced</li>`;
+  if (total > 0 && (food / total) > 0.3) {
+    msg = "Food expenses are high this month";
   }
+
+  document.getElementById("topCategory").innerText = msg;
+  txCountEl.innerText = `🧾 ${allTx.length} transactions`;
 }
+
+function smartSuggestions() {
+  let income = 0, expense = 0;
+
+  allTx.forEach(t => {
+    if (t.amount > 0) income += t.amount;
+    else expense += Math.abs(t.amount);
+  });
+
+  let suggestion = "Good job managing expenses";
+
+  if (expense > income * 0.7) {
+    suggestion = "Try reducing discretionary spending by 10%";
+  }
+
+  document.getElementById("suggestion").innerText = suggestion;
+}
+
 
 function exportCSV() {
   let csv = "Title,Amount,Category,Date\n";
@@ -611,55 +615,45 @@ function downloadCharts() {
   });
 }
 
-function savingsPrediction() {
-  const goal = Number(localStorage.getItem("goal"));
-  if (!goal) return;
 
-  let totalIncome = 0;
-  let totalExpense = 0;
+function savingsPrediction() {
+  let income = 0, expense = 0;
 
   allTx.forEach(t => {
-    const amt = Number(t.amount);
-    if (amt > 0) totalIncome += amt;
-    else totalExpense += Math.abs(amt);
+    const a = Number(t.amount);
+    if (a > 0) income += a;
+    else expense += Math.abs(a);
   });
 
-  const monthlySaving = totalIncome - totalExpense;
-  const remaining = goal - monthlySaving;
+  const monthlySaving = income - expense;
+  const goal = Number(localStorage.getItem("goal"));
 
-  const predictionEl = document.getElementById("predictionText");
-
-  if (monthlySaving <= 0) {
-    predictionEl.innerText =
-      "⚠️ Savings rate is too low to predict goal achievement.";
+  if (!goal || monthlySaving <= 0) {
+    document.getElementById("prediction").innerText =
+      "Set a goal to see prediction";
     return;
   }
 
-  const months = Math.ceil(remaining / monthlySaving);
+  const months = Math.ceil(goal / monthlySaving);
 
-  predictionEl.innerText =
-    months <= 0
-      ? "🎉 You have already achieved your savings goal!"
-      : `📅 At the current rate, you will reach your goal in ${months} month(s).`;
+  document.getElementById("prediction").innerText =
+    `At current rate, you will reach your goal in ${months} month(s)`;
 }
 
-function emailAlertSimulation() {
-  let income = 0;
-  let expense = 0;
+function calcEMI() {
+  const P = Number(loan.value);
+  const R = Number(rate.value) / 12 / 100;
+  const N = Number(months.value);
 
-  allTx.forEach(t => {
-    const amt = Number(t.amount);
-    if (amt > 0) income += amt;
-    else expense += Math.abs(amt);
-  });
-
-  const el = document.getElementById("emailAlert");
-
-  if (expense > income * 0.8) {
-    el.innerText =
-      "📨 Alert email sent: You are exceeding your budget!";
-  } else {
-    el.innerText =
-      "✅ No alert email needed.";
+  if (!P || !R || !N) {
+    emiResult.innerText = "Enter all EMI fields";
+    return;
   }
+
+  const emi =
+    (P * R * Math.pow(1 + R, N)) /
+    (Math.pow(1 + R, N) - 1);
+
+  emiResult.innerText =
+    `Monthly EMI: ₹${emi.toFixed(2)}`;
 }
